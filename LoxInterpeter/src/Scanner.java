@@ -5,92 +5,73 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+// Static import to avoid typing "TokenType." everywhere
 import static com.craftinginterpreters.lox.TokenType.*;
 
-class Scanner
-{
-    private static final Map<String, TokenType> keywords;
-
-    static
-    {
-        keywords = new HashMap<>();
-        keywords.put("and",    AND);
-        keywords.put("class",  CLASS);
-        keywords.put("else",   ELSE);
-        keywords.put("false",  FALSE);
-        keywords.put("for",    FOR);
-        keywords.put("fun",    FUN);
-        keywords.put("if",     IF);
-        keywords.put("nil",    NIL);
-        keywords.put("or",     OR);
-        keywords.put("print",  PRINT);
-        keywords.put("return", RETURN);
-        keywords.put("super",  SUPER);
-        keywords.put("this",   THIS);
-        keywords.put("true",   TRUE);
-        keywords.put("var",    VAR);
-        keywords.put("while",  WHILE);
-    }
+class Scanner {
+    // Scanner stores raw source code as simple string
+    // and generates tokens as we parse through the source
     private final String source;
     private final List<Token> tokens = new ArrayList<>();
-    private int start = 0;
-    private int current = 0;
-    private int line = 1;
+    private int start = 0;  // tracks start of current lexeme
+    private int current = 0;  // tracks current position in source
+    private int line = 1;  // tracks line in source
 
-    Scanner(String source)
-    {
+    private static final Map<String, TokenType> keywords;
+    static {
+        keywords = new HashMap<>();
+        keywords.put("and",     AND);
+        keywords.put("class",   CLASS);
+        keywords.put("else",    ELSE);
+        keywords.put("false",   FALSE);
+        keywords.put("for",     FOR);
+        keywords.put("fun",     FUN);
+        keywords.put("if",      IF);
+        keywords.put("nil",     NIL);
+        keywords.put("or",      OR);
+        keywords.put("print",   PRINT);
+        keywords.put("return",  RETURN);
+        keywords.put("super",   SUPER);
+        keywords.put("this",    THIS);
+        keywords.put("true",    TRUE);
+        keywords.put("var",     VAR);
+        keywords.put("while",   WHILE);
+    }
+
+    Scanner(String source) {
         this.source = source;
     }
-    List<Token> scanTokens()
-    {
+
+    List<Token> scanTokens() {
         while (!isAtEnd()) {
             // We are at the beginning of the next lexeme.
-            start = current;
+            // Update the lexeme start position to current position
+            this.start = this.current;
             scanToken();
         }
 
-        tokens.add(new Token(EOF, "", null, line));
+        // We are at the end of source; append EOF token
+        // not strictly needed, but makes the parser cleaner.
+        tokens.add(new Token(EOF, "", null, this.line));
         return tokens;
     }
 
-    private boolean isAtEnd()
-    {
-        return current >= source.length();
-    }
-    private void scanToken()
-    {
+    private void scanToken() {
         char c = advance();
         switch (c) {
-            case '(':
-                addToken(LEFT_PAREN);
-                break;
-            case ')':
-                addToken(RIGHT_PAREN);
-                break;
-            case '{':
-                addToken(LEFT_BRACE);
-                break;
-            case '}':
-                addToken(RIGHT_BRACE);
-                break;
-            case ',':
-                addToken(COMMA);
-                break;
-            case '.':
-                addToken(DOT);
-                break;
-            case '-':
-                addToken(MINUS);
-                break;
-            case '+':
-                addToken(PLUS);
-                break;
-            case ';':
-                addToken(SEMICOLON);
-                break;
-            case '*':
-                addToken(STAR);
-                break;
+            // Single-character tokens.
+            case '(': addToken(LEFT_PAREN); break;
+            case ')': addToken(RIGHT_PAREN); break;
+            case '{': addToken(LEFT_BRACE); break;
+            case '}': addToken(RIGHT_BRACE); break;
+            case ',': addToken(COMMA); break;
+            case '.': addToken(DOT); break;
+            case '-': addToken(MINUS); break;
+            case '+': addToken(PLUS); break;
+            case ';': addToken(SEMICOLON); break;
+            case '*': addToken(STAR); break;
+
+            // One or two-character operators.
             case '!':
                 addToken(match('=') ? BANG_EQUAL : BANG);
                 break;
@@ -105,25 +86,26 @@ class Scanner
                 break;
             case '/':
                 if (match('/')) {
-                    // A comment goes until the end of the line.
-                    while (peek() != '\n' && !isAtEnd()) advance();
+                    while (peek() != '\n' && !isAtEnd()) {
+                        advance();
+                    }
                 } else {
                     addToken(SLASH);
                 }
                 break;
+
+            case '\n':
+                line++;
             case ' ':
             case '\r':
             case '\t':
-                // Ignore whitespace.
                 break;
-            case '\n':
-                line++;
-                break;
+
 
             case '"':
                 string();
                 break;
-                
+
             default:
                 if (isDigit(c))
                 {
@@ -132,47 +114,46 @@ class Scanner
                 else if (isAlpha(c))
                 {
                     identifier();
-
                 }
                 else
                 {
-                    Lox.error(line, "Unexpected character.");
+                    Lox.error(this.line, "Unexpected character.");
+                    break;
                 }
-                break;
         }
     }
 
-    private boolean match(char expected)
-    {
-        if (isAtEnd())
-        {
-            return false;
-        }
-        if (source.charAt(current) != expected)
-        {
-            return false;
+    private void identifier() {
+        while (isAlphaNumeric(peek())) {
+            advance();
         }
 
-        current++;
-        return true;
-    }
-    private char advance()
-    {
-        return source.charAt(current++);
+        String text = this.source.substring(this.start, this.current);
+        TokenType type = keywords.getOrDefault(text, IDENTIFIER);
+        addToken(type);
     }
 
-    private void addToken(TokenType type, Object literal)
+    private void number()
     {
-        String text = source.substring(start, current);
-        tokens.add(new Token(type, text, literal, line));
-    }
-    private char peek()
-    {
-        if (isAtEnd())
+        while (isDigit(peek()))
         {
-            return '\0';
+            advance();
         }
-        return source.charAt(current);
+
+        if (peek() == '.' && isDigit(peekNext()))
+        {
+            advance();
+
+            while (isDigit(peek()))
+            {
+                advance();
+            }
+        }
+
+        addToken(
+                NUMBER,
+                Double.parseDouble(this.source.substring(this.start, this.current))
+        );
     }
 
     private void string()
@@ -181,61 +162,56 @@ class Scanner
         {
             if (peek() == '\n')
             {
-                line++;
+                this.line++;
             }
             advance();
         }
 
-        if (isAtEnd())
-        {
+        if (isAtEnd()) {
             Lox.error(line, "Unterminated string.");
             return;
         }
-
-        // The closing ".
         advance();
 
-        // Trim the surrounding quotes.
-        String value = source.substring(start + 1, current - 1);
+        String value = this.source.substring(this.start + 1, this.current - 1);
         addToken(STRING, value);
     }
-    private boolean isDigit(char c)
-    {
-        return c >= '0' && c <= '9';
-    }
-    private void number()
-    {
-        while (isDigit(peek())) advance();
 
-        // Look for a fractional part.
-        if (peek() == '.' && isDigit(peekNext()))
+    private boolean match(char expected)
+    {
+        if (isAtEnd())
         {
-            // Consume the "."
-            advance();
-
-            while (isDigit(peek())) advance();
+            return false;
         }
 
-        addToken(NUMBER,
-                Double.parseDouble(source.substring(start, current)));
+        if (this.source.charAt(this.current) != expected)
+        {
+            return false;
+        }
+
+        this.current++;
+        return true;
     }
 
-    private char peekNext() {
-        if (current + 1 >= source.length())
+
+    private char peek()
+    {
+        if (isAtEnd())
         {
             return '\0';
         }
-        return source.charAt(current + 1);
+
+        return this.source.charAt(this.current);
     }
 
-    private void identifier() {
-        while (isAlphaNumeric(peek())) advance();
+    private char peekNext()
+    {
+        if (this.current + 1 >= this.source.length())
+        {
+            return '\0';
+        }
 
-        String text = source.substring(start, current);
-        TokenType type = keywords.get(text);
-        if (type == null) type = IDENTIFIER;
-
-        addToken(type);
+        return this.source.charAt(this.current + 1);
     }
 
     private boolean isAlpha(char c)
@@ -250,8 +226,30 @@ class Scanner
         return isAlpha(c) || isDigit(c);
     }
 
+    private boolean isDigit(char c)
+    {
+        return c >= '0' && c <= '9';
+    }
+
+    private boolean isAtEnd()
+    {
+        return this.current >= this.source.length();
+    }
+
+
+    private char advance()
+    {
+        return this.source.charAt(this.current++);
+    }
+
     private void addToken(TokenType type)
     {
         addToken(type, null);
+    }
+
+    private void addToken(TokenType type, Object literal)
+    {
+        String text = this.source.substring(this.start, this.current);
+        this.tokens.add(new Token(type, text, literal, this.line));
     }
 }
